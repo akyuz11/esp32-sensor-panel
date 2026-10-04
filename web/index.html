@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Canlı Sensör Paneli</title>
+<meta name="description" content="ESP32 panelinin MQTT sensör verilerinin canlı görünümü">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  /* Cihazdaki "Gece Mavisi" temasiyla ayni palet (src/ui/ui_theme.h). */
+  :root {
+    --bg-top: #111a36;
+    --bg-bottom: #04060d;
+    --card-top: #182040;
+    --card-bottom: #10162c;
+    --border: #25304f;
+    --text: #eaf0ff;
+    --text-dim: #8a96b8;
+    --accent: #22d3ee;
+    --good: #34d399;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg-bottom); }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 70%) fixed;
+    color: var(--text);
+    font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 32px 16px 48px; }
+
+  header {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+    gap: 12px 24px; margin-bottom: 28px;
+  }
+  h1 { font-size: 1.5rem; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--text-dim); font-size: 0.9rem; margin-top: 4px; }
+
+  .status {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 7px 14px; border-radius: 999px;
+    background: rgba(24, 32, 64, 0.8); border: 1px solid var(--border);
+    font-size: 0.85rem; font-weight: 500; white-space: nowrap;
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--warn); flex: none; }
+  .status[data-state="online"] .dot { background: var(--good); box-shadow: 0 0 10px var(--good); }
+  .status[data-state="offline"] .dot { background: var(--bad); }
+
+  .grid {
+    display: grid; gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  }
+  .card {
+    position: relative;
+    background: linear-gradient(180deg, var(--card-top), var(--card-bottom));
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px 14px;
+    box-shadow: 0 0 24px rgba(34, 211, 238, 0.06);
+    overflow: hidden;
+  }
+  .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .name { font-size: 0.95rem; font-weight: 500; }
+  .age { font-size: 0.78rem; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .value-row { display: flex; align-items: baseline; gap: 6px; margin: 10px 0 8px; }
+  .value {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 2.6rem; font-weight: 600; line-height: 1;
+    font-variant-numeric: tabular-nums; transition: color 0.4s;
+  }
+  .unit { color: var(--text-dim); font-size: 1rem; }
+  .card.flash .value { color: var(--accent); }
+  .card.stale .value { color: var(--text-dim); }
+  .card.stale .age { color: var(--warn); }
+  .card.empty .value { color: var(--text-dim); }
+
+  .spark { display: block; width: 100%; height: 44px; }
+  .spark polyline { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+  .spark path { fill: url(#sparkFill); stroke: none; }
+  .range { display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-dim); margin-top: 4px; font-variant-numeric: tabular-nums; }
+
+  footer {
+    margin-top: 32px; padding-top: 18px; border-top: 1px solid var(--border);
+    color: var(--text-dim); font-size: 0.8rem; line-height: 1.6;
+  }
+  footer code { font-family: "JetBrains Mono", ui-monospace, monospace; color: var(--text); font-size: 0.78rem; overflow-wrap: anywhere; }
+
+  @media (max-width: 480px) {
+    .wrap { padding-top: 22px; }
+    h1 { font-size: 1.25rem; }
+    .value { font-size: 2.2rem; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .value { transition: none; }
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#22d3ee" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Canlı Sensör Paneli</h1>
+      <div class="sub" id="lastUpdate">Veri bekleniyor…</div>
+    </div>
+    <div class="status" id="status" data-state="connecting" role="status" aria-live="polite">
+      <span class="dot"></span><span id="statusText">Bağlanıyor…</span>
+    </div>
+  </header>
+
+  <main class="grid" id="grid"></main>
+
+  <footer>
+    Veriler MQTT üzerinden canlı gelir; sayfa yalnızca açık olduğu süre boyunca geçmiş tutar.<br>
+    Broker: <code id="brokerInfo"></code> · Topic: <code id="topicInfo"></code>
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5/dist/mqtt.min.js"></script>
+<script>
+  // --- Ayarlar: cihazdaki include/app_config.h ve include/secrets.h ile ayni olmali ---
+  const BROKER_URL = "wss://test.mosquitto.org:8081";
+  const PREFIX = "MQTT_Verileri";
+  const SENSORS = [
+    { key: "sensor/temperature", name: "Sıcaklık", unit: "°C", digits: 1 },
+    { key: "sensor/humidity",    name: "Nem",      unit: "%",  digits: 1 },
+    { key: "energy/voltage",     name: "Gerilim",  unit: "V",  digits: 1 },
+    { key: "energy/current",     name: "Akım",     unit: "A",  digits: 2 },
+    { key: "energy/power",       name: "Güç",      unit: "W",  digits: 0 },
+  ];
+  const HISTORY_LEN = 60;       // trend cizgisinde tutulan son deger sayisi
+  const STALE_AFTER_S = 30;     // bu kadar sure veri gelmezse kart "eski" gorunur
+
+  const grid = document.getElementById("grid");
+  const statusEl = document.getElementById("status");
+  const statusText = document.getElementById("statusText");
+  const lastUpdateEl = document.getElementById("lastUpdate");
+  document.getElementById("brokerInfo").textContent = BROKER_URL;
+  document.getElementById("topicInfo").textContent = PREFIX + "/#";
+
+  const state = new Map(); // topic -> { sensor, els, history[], lastMs }
+  let lastAnyMs = 0;
+
+  for (const s of SENSORS) {
+    const card = document.createElement("section");
+    card.className = "card empty";
+    card.innerHTML = `
+      <div class="card-head"><span class="name"></span><span class="age">—</span></div>
+      <div class="value-row"><span class="value">--</span><span class="unit"></span></div>
+      <svg class="spark" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true">
+        <path d=""></path><polyline points=""></polyline>
+      </svg>
+      <div class="range"><span class="min"></span><span class="max"></span></div>`;
+    card.querySelector(".name").textContent = s.name;
+    card.querySelector(".unit").textContent = s.unit;
+    grid.appendChild(card);
+    state.set(`${PREFIX}/${s.key}`, {
+      sensor: s,
+      history: [],
+      lastMs: 0,
+      els: {
+        card,
+        value: card.querySelector(".value"),
+        age: card.querySelector(".age"),
+        line: card.querySelector("polyline"),
+        area: card.querySelector("path"),
+        min: card.querySelector(".min"),
+        max: card.querySelector(".max"),
+      },
+    });
+  }
+
+  function setStatus(kind, text) {
+    statusEl.dataset.state = kind;
+    statusText.textContent = text;
+  }
+
+  function drawSpark(entry) {
+    const h = entry.history;
+    const { line, area, min, max } = entry.els;
+    if (h.length < 2) { line.setAttribute("points", ""); area.setAttribute("d", ""); return; }
+    let lo = Math.min(...h), hi = Math.max(...h);
+    if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
+    const pad = (hi - lo) * 0.12;
+    lo -= pad; hi += pad;
+    const pts = h.map((v, i) => {
+      const x = (i / (HISTORY_LEN - 1)) * 100;
+      const y = 40 - ((v - lo) / (hi - lo)) * 40;
+      return [x.toFixed(2), y.toFixed(2)];
+    });
+    line.setAttribute("points", pts.map(p => p.join(",")).join(" "));
+    area.setAttribute("d", `M${pts[0][0]},40 L${pts.map(p => p.join(",")).join(" L")} L${pts[pts.length - 1][0]},40 Z`);
+    const d = entry.sensor.digits;
+    min.textContent = "min " + Math.min(...h).toFixed(d);
+    max.textContent = "maks " + Math.max(...h).toFixed(d);
+  }
+
+  function onValue(topic, raw) {
+    const entry = state.get(topic);
+    if (!entry) return;
+    // Cihazla ayni kural: sade sayi; gecersiz payload'da son gecerli deger korunur.
+    const v = Number.parseFloat(raw);
+    if (!Number.isFinite(v)) return;
+
+    entry.lastMs = Date.now();
+    lastAnyMs = entry.lastMs;
+    entry.history.push(v);
+    if (entry.history.length > HISTORY_LEN) entry.history.shift();
+
+    const { card, value } = entry.els;
+    value.textContent = v.toFixed(entry.sensor.digits);
+    card.classList.remove("empty", "stale");
+    card.classList.add("flash");
+    setTimeout(() => card.classList.remove("flash"), 600);
+    drawSpark(entry);
+    tick();
+  }
+
+  function ago(ms) {
+    const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+    if (s < 5) return "şimdi";
+    if (s < 60) return `${s} sn önce`;
+    const m = Math.floor(s / 60);
+    return m < 60 ? `${m} dk önce` : `${Math.floor(m / 60)} sa önce`;
+  }
+
+  function tick() {
+    for (const entry of state.values()) {
+      if (!entry.lastMs) continue;
+      entry.els.age.textContent = ago(entry.lastMs);
+      entry.els.card.classList.toggle("stale", Date.now() - entry.lastMs > STALE_AFTER_S * 1000);
+    }
+    if (lastAnyMs) {
+      lastUpdateEl.textContent = "Son güncelleme: " + new Date(lastAnyMs).toLocaleTimeString("tr-TR");
+    }
+  }
+  setInterval(tick, 1000);
+
+  if (typeof mqtt === "undefined") {
+    setStatus("offline", "MQTT kütüphanesi yüklenemedi");
+  } else {
+    const client = mqtt.connect(BROKER_URL, {
+      clientId: "webpanel-" + Math.random().toString(16).slice(2, 10),
+      reconnectPeriod: 3000,
+      connectTimeout: 10000,
+      clean: true,
+    });
+    client.on("connect", () => {
+      setStatus("online", "Canlı");
+      client.subscribe(PREFIX + "/#");
+    });
+    client.on("reconnect", () => setStatus("connecting", "Yeniden bağlanıyor…"));
+    client.on("offline", () => setStatus("offline", "Bağlantı yok"));
+    client.on("error", () => setStatus("offline", "Bağlantı hatası"));
+    client.on("message", (topic, payload) => onValue(topic, payload.toString()));
+  }
+</script>
+</body>
+</html>
