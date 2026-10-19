@@ -1,6 +1,6 @@
 #include "storage_service.h"
 #include "app_state.h"
-#include "board/waveshare/SD_Card.h"
+#include "board.h"
 
 static bool s_mounted = false;
 static uint32_t s_last_remount_attempt_ms = 0;
@@ -8,13 +8,12 @@ static uint32_t s_last_remount_attempt_ms = 0;
 
 static void refresh_from_card()
 {
-  uint8_t cardType = SD_MMC.cardType();
-  s_mounted = (cardType != CARD_NONE);
+  s_mounted = board_sd_card_present();
 
   g_systemStatus.sdMounted = s_mounted;
   if (s_mounted) {
-    g_systemStatus.sdCapacityBytes = SD_MMC.totalBytes();
-    g_systemStatus.sdUsedBytes = SD_MMC.usedBytes();
+    g_systemStatus.sdCapacityBytes = board_sd_total_bytes();
+    g_systemStatus.sdUsedBytes = board_sd_used_bytes();
   } else {
     g_systemStatus.sdCapacityBytes = 0;
     g_systemStatus.sdUsedBytes = 0;
@@ -23,7 +22,7 @@ static void refresh_from_card()
 
 void storage_service_init()
 {
-  SD_Init(); // Waveshare resmi surucusu (EXIO D3 etkinlestirme + SD_MMC.begin)
+  board_sd_begin();
   refresh_from_card();
   if (!s_mounted) {
     Serial.println("[SD] Kart bulunamadi, cihaz calismaya devam edecek");
@@ -47,8 +46,8 @@ void storage_service_update()
   }
   s_last_remount_attempt_ms = now;
 
-  SD_MMC.end();
-  SD_Init();
+  board_sd_end();
+  board_sd_begin();
   refresh_from_card();
   if (s_mounted) {
     Serial.println("[SD] Kart yeniden baglandi");
@@ -71,7 +70,7 @@ void storage_service_run_boot_test()
 
   // 1) Onceki acilislari say: dosyadaki satir sayisi = onceki acilis sayisi
   uint32_t boot_count = 1;
-  File rf = SD_MMC.open(path, FILE_READ);
+  File rf = board_sd_fs().open(path, FILE_READ);
   if (rf) {
     while (rf.available()) {
       if (rf.read() == '\n') {
@@ -82,7 +81,7 @@ void storage_service_run_boot_test()
   }
 
   // 2) Yeni satiri dosyanin sonuna ekle
-  File wf = SD_MMC.open(path, FILE_APPEND);
+  File wf = board_sd_fs().open(path, FILE_APPEND);
   if (!wf) {
     Serial.println("[SD TEST] Dosya yazmak icin acilamadi");
     return;
@@ -92,7 +91,7 @@ void storage_service_run_boot_test()
   Serial.printf("[SD TEST] Yazildi -> %s (Acilis #%lu)\r\n", path, (unsigned long)boot_count);
 
   // 3) Dosyanin tamamini geri oku ve seri monitore bas
-  rf = SD_MMC.open(path, FILE_READ);
+  rf = board_sd_fs().open(path, FILE_READ);
   if (!rf) {
     Serial.println("[SD TEST] Dosya okumak icin acilamadi");
     return;

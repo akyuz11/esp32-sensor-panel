@@ -1,7 +1,7 @@
 #include "motion_service.h"
 #include "app_state.h"
 #include "app_config.h"
-#include "board/waveshare/Gyro_QMI8658.h"
+#include "board.h"
 
 #include <Arduino.h>
 #include <math.h>
@@ -24,7 +24,11 @@ void motion_service_init()
 
 void motion_service_loop()
 {
-  float x = Accel.x, y = Accel.y, z = Accel.z;
+  BoardVec3 a;
+  if (!board_imu_accel(&a)) {
+    return;
+  }
+  float x = a.x, y = a.y, z = a.z;
   g_motionStatus.accelX = x;
   g_motionStatus.accelY = y;
   g_motionStatus.accelZ = z;

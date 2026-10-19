@@ -1,6 +1,6 @@
 #include "battery_service.h"
 #include "app_state.h"
-#include "board/waveshare/BAT_Driver.h"
+#include "board.h"
 
 // Basit, dogrusal olmayan Li-Po gerilim -> yuzde tablosu (buyukten kucuge).
 struct BatteryPoint {
@@ -43,10 +43,9 @@ static int voltage_to_percent(float volts)
 
 void battery_service_update()
 {
-  // BAT_Get_Volts(), Driver_Loop icinde (100ms'de bir) Waveshare'in resmi
-  // fonksiyonuyla zaten cagriliyor; burada yalnizca en son okunan degeri
-  // (BAT_analogVolts) yorumluyoruz.
-  float volts = BAT_analogVolts;
+  // Pil ADC'si Driver_Loop icinde (100ms'de bir) board_poll() ile zaten
+  // okunuyor; burada yalnizca en son okunan degeri yorumluyoruz.
+  float volts = board_battery_volts();
 
   // Kartta gercek bir "pil takili mi" pini yok. BAT_ADC_PIN, pilin dogrudan
   // gerilim boluculu girisidir; pil yokken bu hat genelde cok dusuk/gurultulu

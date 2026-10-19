@@ -13,6 +13,10 @@ void ui_theme_apply_screen(lv_obj_t *scr)
 {
   ui_theme_apply_bg_gradient(scr);
   lv_obj_set_style_text_color(scr, UI_COLOR_TEXT, 0);
+#if UI_COMPACT
+  // Yazi tipi kalitimla tum alt nesnelere gecer (lv_conf varsayilani 18 punto).
+  lv_obj_set_style_text_font(scr, UI_FONT_SMALL, 0);
+#endif
 }
 
 lv_obj_t *ui_theme_create_card(lv_obj_t *parent)
@@ -24,8 +28,8 @@ lv_obj_t *ui_theme_create_card(lv_obj_t *parent)
   lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
   lv_obj_set_style_border_color(card, UI_COLOR_CARD_BORDER, 0);
   lv_obj_set_style_border_width(card, 1, 0);
-  lv_obj_set_style_radius(card, 14, 0);
-  lv_obj_set_style_pad_all(card, 8, 0);
+  lv_obj_set_style_radius(card, UI_CARD_RADIUS, 0);
+  lv_obj_set_style_pad_all(card, UI_CARD_PAD, 0);
   // Hafif camgobegi parlama (LV_SHADOW_CACHE_SIZE sayesinde tum kartlar ayni golgeyi paylasir).
   lv_obj_set_style_shadow_width(card, 10, 0);
   lv_obj_set_style_shadow_color(card, UI_COLOR_ACCENT, 0);
@@ -37,13 +41,13 @@ lv_obj_t *ui_theme_create_card(lv_obj_t *parent)
 void ui_theme_style_title(lv_obj_t *label)
 {
   lv_obj_set_style_text_color(label, UI_COLOR_TEXT, 0);
-  lv_obj_set_style_text_font(label, &lv_font_montserrat_28, 0);
+  lv_obj_set_style_text_font(label, UI_FONT_TITLE, 0);
 }
 
 void ui_theme_style_subtitle(lv_obj_t *label)
 {
   lv_obj_set_style_text_color(label, UI_COLOR_TEXT_DIM, 0);
-  lv_obj_set_style_text_font(label, &lv_font_montserrat_18, 0);
+  lv_obj_set_style_text_font(label, UI_FONT_SMALL, 0);
 }
 
 lv_obj_t *ui_theme_create_status_dot(lv_obj_t *parent, lv_color_t color)

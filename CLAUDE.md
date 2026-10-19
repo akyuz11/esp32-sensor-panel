@@ -16,7 +16,7 @@ pio device monitor      # serial monitor (115200 baud)
 pio run -t upload -t monitor   # flash + immediately open monitor
 ```
 
-There is no test suite. There is exactly one environment (`waveshare_esp32s3_touch_lcd_146`) in `platformio.ini`, so no `-e` flag is needed.
+There is no test suite. `platformio.ini` has two environments: `waveshare_esp32s3_touch_lcd_146` (the default, so plain `pio run` targets it) and `crowpanel_advance_28` (use `-e crowpanel_advance_28`). Both boards enumerate with the same USB VID:PID, so `tools/select_upload_port.py` picks the upload port by each env's `custom_usb_serial` and aborts the upload if that board isn't plugged in — never remove it or hard-code a COM port, or firmware can land on the wrong board.
 
 Before building, `include/secrets.h` must exist (copy from `include/secrets.example.h`). If missing, the build still succeeds via `include/credentials.h`'s `__has_include` fallback, but Wi-Fi/MQTT stay disabled and the app runs in DEMO mode only.
 
@@ -30,16 +30,20 @@ Similarly, `boards/waveshare_esp32s3_touch_lcd_146.json` is a **custom local boa
 
 ## Architecture
 
-### Vendor driver boundary (`src/board/waveshare/`)
+### Board abstraction (`include/board.h`, `src/board/<board>/`)
 
-These files are copied **verbatim** from Waveshare's official Arduino demo (LCD/touch/TCA9554/battery/RTC/SD/backlight/IMU/power-key drivers) and should be treated as a vendored dependency, not application code — avoid editing them. If a bug is suspected here, prefer working around it from `src/services/` or `src/main.cpp` rather than patching the driver. Pin assignments live in these headers (`I2C_Driver.h`, `Display_SPD2010.h`, `Touch_SPD2010.h`, `BAT_Driver.h`, `SD_Card.h`, `PWR_Key.h`) — if you need a pin number, look here rather than guessing.
+`main.cpp` and every service reach hardware **only** through `include/board.h` (init/poll, backlight, battery volts, RTC read/write/lost-power, IMU accel/gyro, SD fs). Nothing outside `src/board/` may include a vendor header. Each board implements `board.h` in `src/board/<board>/board_impl.cpp`; `build_src_filter` in each `platformio.ini` env compiles only that board's folder (`-<board/> +<board/waveshare_146/>`). Hardware a board lacks is reported via `board_has_*()` and "empty" return values rather than `#ifdef`s in services. When adding a new hardware access, extend `board.h` and every `board_impl.cpp` — don't include vendor headers from a service.
+
+### Vendor driver boundary (`src/board/waveshare_146/vendor/`)
+
+These files are copied **verbatim** from Waveshare's official Arduino demo (LCD/touch/TCA9554/battery/RTC/SD/backlight/IMU/power-key drivers) and should be treated as a vendored dependency, not application code — avoid editing them. If a bug is suspected here, prefer working around it from `board_impl.cpp` rather than patching the driver. Pin assignments live in these headers (`I2C_Driver.h`, `Display_SPD2010.h`, `Touch_SPD2010.h`, `BAT_Driver.h`, `SD_Card.h`, `PWR_Key.h`) — if you need a pin number, look here rather than guessing.
 
 `TCA9554PWR` is an I2C GPIO expander; some "pins" referenced in driver code (e.g. LCD reset, SD D3 enable) are `EXIO_PIN*` virtual pins on that expander, not real ESP32 GPIOs.
 
 ### Two-task concurrency model — the load-bearing rule of this codebase
 
 - **Arduino `loop()`** (implicit core, effectively the main/UI task): calls only `Lvgl_Loop()` + `vTaskDelay(5)`. This is the only place `lv_timer_handler()` runs, so **anything that touches LVGL objects must happen on this task** — either directly in `ui_app_init()`/page create functions, or inside the periodic `lv_timer` in `ui_app.cpp` (`refresh_timer_cb`, 1s).
-- **`Driver_Loop` FreeRTOS task** (pinned to core 0, created in `main.cpp::setup()`): runs every ~100ms and drives *all* blocking/IO work — vendor polling (`PWR_Loop`, `QMI8658_Loop`, `PCF85063_Loop`, `BAT_Get_Volts`), and every service's `_loop()`/`_update()` (wifi, mqtt, rtc, storage, system, logging, demo).
+- **`Driver_Loop` FreeRTOS task** (pinned to core 0, created in `main.cpp::setup()`): runs every ~100ms and drives *all* blocking/IO work — board polling via `board_poll()` (on Waveshare: `PWR_Loop`, `QMI8658_Loop`, `PCF85063_Loop`, `BAT_Get_Volts`), and every service's `_loop()`/`_update()` (wifi, mqtt, rtc, storage, system, logging, demo).
 
 **Consequence:** LVGL button/slider callbacks in `src/ui/ui_pages.cpp` never call blocking service functions directly (no `WiFi.begin()`, no NTP sync, no SD writes, no MQTT connect from inside an `lv_event_cb_t`). Instead they set a `volatile bool` request flag (e.g. `wifi_service_request_reconnect()`, `rtc_service_request_ntp_sync()`, `logging_service_request_write_now()`, `mqtt_service_request_connect()`), and `Driver_Loop` polls/executes it on the next iteration. When adding a new UI action that touches network/SD/RTC-write, follow this same request-flag pattern — don't be the first one to block the UI thread.
 

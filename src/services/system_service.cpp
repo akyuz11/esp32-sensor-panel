@@ -1,7 +1,7 @@
 #include "system_service.h"
 #include "app_state.h"
 #include "app_config.h"
-#include "board/waveshare/Display_SPD2010.h"
+#include "board.h"
 #include "ui/ui_app.h"
 
 #include <esp_heap_caps.h>
@@ -24,7 +24,7 @@ void system_service_set_brightness(uint8_t percent)
   s_user_brightness = percent;
   g_systemStatus.brightnessPercent = percent;
   if (!s_screen_sleeping) {
-    Set_Backlight(percent);
+    board_set_backlight(percent);
   }
 }
 
@@ -48,7 +48,7 @@ void system_service_apply_sleep_policy()
   if (s_sleep_timeout_ms == APP_SLEEP_TIMEOUT_OFF) {
     if (s_screen_sleeping) {
       s_screen_sleeping = false;
-      Set_Backlight(s_user_brightness);
+      board_set_backlight(s_user_brightness);
     }
     return;
   }
@@ -57,11 +57,11 @@ void system_service_apply_sleep_policy()
 
   if (!s_screen_sleeping && inactive_ms >= s_sleep_timeout_ms) {
     s_screen_sleeping = true;
-    Set_Backlight(0);
+    board_set_backlight(0);
     Serial.println("[UI] Ekran uykuya gecti");
   } else if (s_screen_sleeping && inactive_ms < s_sleep_timeout_ms) {
     s_screen_sleeping = false;
-    Set_Backlight(s_user_brightness);
+    board_set_backlight(s_user_brightness);
     Serial.println("[UI] Ekran uyandi");
   }
 }
