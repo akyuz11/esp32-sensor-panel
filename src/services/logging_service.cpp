@@ -1,8 +1,7 @@
 #include "logging_service.h"
 #include "app_state.h"
 #include "app_config.h"
-#include "board/waveshare/SD_Card.h"
-#include "board/waveshare/RTC_PCF85063.h"
+#include "board.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,7 +13,9 @@ static volatile bool s_view_reload_requested = false;
 static void format_current_time_hhmm(char *out, size_t out_len)
 {
   if (g_systemStatus.rtcValid) {
-    snprintf(out, out_len, "%02u:%02u", datetime.hour, datetime.minute);
+    BoardDateTime now;
+    board_rtc_now(&now);
+    snprintf(out, out_len, "%02u:%02u", now.hour, now.minute);
   } else {
     snprintf(out, out_len, "--:--");
   }
@@ -51,16 +52,20 @@ static bool write_row_now()
     return false;
   }
 
-  if (!SD_MMC.exists("/logs")) {
-    SD_MMC.mkdir("/logs");
+  fs::FS &sd = board_sd_fs();
+  BoardDateTime dt;
+  board_rtc_now(&dt);
+
+  if (!sd.exists("/logs")) {
+    sd.mkdir("/logs");
   }
 
   char path[48];
-  snprintf(path, sizeof(path), "/logs/%04u-%02u-%02u.csv", datetime.year, datetime.month, datetime.day);
+  snprintf(path, sizeof(path), "/logs/%04u-%02u-%02u.csv", dt.year, dt.month, dt.day);
 
-  bool file_exists = SD_MMC.exists(path);
+  bool file_exists = sd.exists(path);
 
-  File f = SD_MMC.open(path, FILE_APPEND);
+  File f = sd.open(path, FILE_APPEND);
   if (!f) {
     g_loggingStatus.lastWriteSuccessful = false;
     strncpy(g_loggingStatus.lastError, "Dosya acilamadi", sizeof(g_loggingStatus.lastError) - 1);
@@ -75,8 +80,8 @@ static bool write_row_now()
 
   char line[160];
   snprintf(line, sizeof(line), "%04u-%02u-%02u %02u:%02u:%02u,",
-           datetime.year, datetime.month, datetime.day,
-           datetime.hour, datetime.minute, datetime.second);
+           dt.year, dt.month, dt.day,
+           dt.hour, dt.minute, dt.second);
 
   append_field(line, sizeof(line), g_sensorValues.temperatureValid, g_sensorValues.temperature);
   append_field(line, sizeof(line), g_sensorValues.humidityValid, g_sensorValues.humidity);
@@ -116,7 +121,7 @@ static LogViewRow s_parsed_rows[LOG_VIEW_PARSE_MAX];
 // buyuk ad = en yeni gun).
 static bool find_newest_log_file(char *out, size_t out_len)
 {
-  File dir = SD_MMC.open("/logs");
+  File dir = board_sd_fs().open("/logs");
   if (!dir || !dir.isDirectory()) {
     return false;
   }
@@ -210,7 +215,7 @@ static void load_view()
     return;
   }
 
-  File f = SD_MMC.open(path, FILE_READ);
+  File f = board_sd_fs().open(path, FILE_READ);
   if (!f) {
     finish_view(path, 0, "Dosya acilamadi");
     return;

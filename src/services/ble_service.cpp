@@ -3,7 +3,7 @@
 #include "rtc_service.h"
 #include "logging_service.h"
 #include "system_service.h"
-#include "board/waveshare/Gyro_QMI8658.h"
+#include "board.h"
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLE2902.h>
@@ -186,7 +186,8 @@ void ble_service_loop() {
   }
   if (now - s_last < 200) return;
   s_last = now;
-  getGyroscope();
+  BoardVec3 gyro = {0, 0, 0};
+  board_imu_gyro(&gyro);
   // 20 bytes fit the default ATT MTU; no fragmentation/MTU negotiation needed.
   // v1, flags(battery valid), uptime LE32, accel milli-g x3,
   // gyro centi-degrees/s x3, battery millivolts LE16.
@@ -195,10 +196,10 @@ void ble_service_loop() {
   put16(p+6, scaled(g_motionStatus.accelX, 1000));
   put16(p+8, scaled(g_motionStatus.accelY, 1000));
   put16(p+10, scaled(g_motionStatus.accelZ, 1000));
-  // Vendor readings are updated on this same task immediately before us.
-  put16(p+12, scaled(Gyro.x, 100));
-  put16(p+14, scaled(Gyro.y, 100));
-  put16(p+16, scaled(Gyro.z, 100));
+  // Gyro is read on this same task immediately above.
+  put16(p+12, scaled(gyro.x, 100));
+  put16(p+14, scaled(gyro.y, 100));
+  put16(p+16, scaled(gyro.z, 100));
   put16(p+18, g_systemStatus.batteryValid ? scaled(g_systemStatus.batteryVoltage, 1000) : 0);
   s_data->setValue(p, sizeof(p));
   s_data->notify();

@@ -2,6 +2,7 @@
 #include "ui_theme.h"
 #include "ui_pages.h"
 #include "ui_modal.h"
+#include "ui_debug.h"
 
 #include <Arduino.h>
 
@@ -81,7 +82,7 @@ static lv_obj_t *create_nav_bar(lv_obj_t *parent)
 
     lv_obj_t *label = lv_label_create(btn);
     lv_label_set_text(label, s_nav_labels[i]);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(label, UI_FONT_NAV, 0);
     lv_obj_center(label);
 
     s_nav_buttons[i] = btn;
@@ -93,13 +94,25 @@ static lv_obj_t *create_nav_bar(lv_obj_t *parent)
 
 void ui_app_init()
 {
+#if UI_THEME_MONO
+  // LVGL varsayilan temasi acik zemin + mavi ana renk kullanir; acikca renk
+  // verilmemis parcalar (slider zemini, odak cercevesi) da gri/koyu olsun.
+  lv_disp_t *disp = lv_disp_get_default();
+  lv_disp_set_theme(disp, lv_theme_default_init(disp, lv_palette_main(LV_PALETTE_GREY),
+                                                lv_palette_darken(LV_PALETTE_GREY, 2), true,
+                                                LV_FONT_DEFAULT));
+#endif
   lv_obj_t *scr = lv_scr_act();
   ui_theme_apply_screen(scr);
 
   s_tileview = lv_tileview_create(scr);
-  lv_obj_set_size(s_tileview, 412, 412);
+  lv_obj_set_size(s_tileview, UI_SCREEN_W, UI_SCREEN_H);
   lv_obj_set_pos(s_tileview, 0, 0);
   ui_theme_apply_bg_gradient(s_tileview);
+#if UI_COMPACT
+  // Yatay kaydirma cubugu nav barin altinda ince bir cizgi olarak gorunuyordu.
+  lv_obj_set_scrollbar_mode(s_tileview, LV_SCROLLBAR_MODE_OFF);
+#endif
   lv_obj_add_event_cb(s_tileview, tileview_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
   s_tiles[0] = lv_tileview_add_tile(s_tileview, 0, 0, LV_DIR_HOR);
@@ -119,6 +132,17 @@ void ui_app_init()
   // Ilk deger doldurma + periyodik guncelleme (1 saniye).
   refresh_timer_cb(NULL);
   lv_timer_create(refresh_timer_cb, 1000, NULL);
+
+  ui_debug_init();
+}
+
+void ui_app_show_tile(int index)
+{
+  if (index < 0 || index >= NAV_COUNT) {
+    return;
+  }
+  lv_obj_set_tile_id(s_tileview, index, 0, LV_ANIM_OFF);
+  set_nav_highlight(index);
 }
 
 uint32_t ui_app_inactivity_ms()

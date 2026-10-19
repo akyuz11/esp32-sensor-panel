@@ -13,6 +13,14 @@
 #include <stdio.h>
 #include <esp_random.h>
 
+// Buton yuksekligi: yuvarlak ekranda her yerdeki ozgun deger korunur,
+// kompakt ekranda tek tip UI_BUTTON_HEIGHT kullanilir.
+#if UI_COMPACT
+#define BTN_H(round_h) UI_BUTTON_HEIGHT
+#else
+#define BTN_H(round_h) (round_h)
+#endif
+
 // Sayfa 4 (KAYIT) buton geri cagrilari; Sayfa 3'teki (MENU) Kayit alt
 // ekraninda da ayni davranis kullanildigi icin ileri bildirim gerekiyor.
 static void log_start_stop_btn_cb(lv_event_t *e);
@@ -190,28 +198,59 @@ void ui_page_status_create(lv_obj_t *tile)
   lv_obj_set_style_pad_all(content, 0, 0);
   lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLLABLE);
 
+#if UI_COMPACT
+  // Kompakt (yatay) duzen: solda saat/tarih/pil, sagda alt alta rozetler.
+  const lv_coord_t left_w = 128;
+  lv_obj_t *left = lv_obj_create(content);
+  lv_obj_set_size(left, left_w, LV_PCT(100));
+  lv_obj_align(left, LV_ALIGN_TOP_LEFT, 0, 0);
+  lv_obj_set_style_bg_opa(left, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(left, 0, 0);
+  lv_obj_set_style_pad_all(left, 0, 0);
+  lv_obj_clear_flag(left, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t *clock_parent = left;
+#else
+  lv_obj_t *clock_parent = content;
+#endif
+
   // Saat / tarih
-  s_clock_label = lv_label_create(content);
+  s_clock_label = lv_label_create(clock_parent);
   lv_label_set_text(s_clock_label, "--:--");
-  lv_obj_set_style_text_font(s_clock_label, &lv_font_montserrat_36, 0);
+  lv_obj_set_style_text_font(s_clock_label, UI_FONT_CLOCK, 0);
   lv_obj_set_style_text_color(s_clock_label, UI_COLOR_TEXT, 0);
   lv_obj_align(s_clock_label, LV_ALIGN_TOP_MID, 0, 0);
 
-  s_date_label = lv_label_create(content);
+  s_date_label = lv_label_create(clock_parent);
   lv_label_set_text(s_date_label, "--.--.----");
   ui_theme_style_subtitle(s_date_label);
+#if UI_COMPACT
+  // Ebeveyne gore hizali: metin degistikce ortada kalir.
+  lv_obj_align(s_date_label, LV_ALIGN_TOP_MID, 0, 42);
+#else
   lv_obj_align_to(s_date_label, s_clock_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 2);
+#endif
 
   // Pil gostergesi (dairesel arc)
-  lv_obj_t *bat_box = lv_obj_create(content);
+  lv_obj_t *bat_box = lv_obj_create(clock_parent);
+#if UI_COMPACT
+  const lv_coord_t arc_size = 104;
+  lv_obj_set_size(bat_box, arc_size + 8, arc_size + 8);
+  lv_obj_set_style_pad_all(bat_box, 0, 0);
+#else
+  const lv_coord_t arc_size = 110;
   lv_obj_set_size(bat_box, 140, 118);
+#endif
   lv_obj_set_style_bg_opa(bat_box, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(bat_box, 0, 0);
   lv_obj_clear_flag(bat_box, LV_OBJ_FLAG_SCROLLABLE);
+#if UI_COMPACT
+  lv_obj_align(bat_box, LV_ALIGN_BOTTOM_MID, 0, -4);
+#else
   lv_obj_align_to(bat_box, s_date_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 4);
+#endif
 
   s_battery_arc = lv_arc_create(bat_box);
-  lv_obj_set_size(s_battery_arc, 110, 110);
+  lv_obj_set_size(s_battery_arc, arc_size, arc_size);
   lv_arc_set_range(s_battery_arc, 0, 100);
   lv_arc_set_value(s_battery_arc, 0);
   lv_arc_set_bg_angles(s_battery_arc, 0, 360);
@@ -220,13 +259,18 @@ void ui_page_status_create(lv_obj_t *tile)
   lv_obj_clear_flag(s_battery_arc, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_set_style_arc_color(s_battery_arc, UI_COLOR_CARD_BORDER, LV_PART_MAIN);
   lv_obj_set_style_arc_color(s_battery_arc, UI_COLOR_ACCENT, LV_PART_INDICATOR);
+#if UI_COMPACT
+  lv_obj_set_style_arc_width(s_battery_arc, 8, LV_PART_MAIN);
+  lv_obj_set_style_arc_width(s_battery_arc, 8, LV_PART_INDICATOR);
+#else
   lv_obj_set_style_arc_width(s_battery_arc, 10, LV_PART_MAIN);
   lv_obj_set_style_arc_width(s_battery_arc, 10, LV_PART_INDICATOR);
+#endif
   lv_obj_center(s_battery_arc);
 
   s_battery_percent_label = lv_label_create(bat_box);
   lv_label_set_text(s_battery_percent_label, "PIL YOK");
-  lv_obj_set_style_text_font(s_battery_percent_label, &lv_font_montserrat_26, 0);
+  lv_obj_set_style_text_font(s_battery_percent_label, UI_FONT_BIG, 0);
   lv_obj_set_style_text_color(s_battery_percent_label, UI_COLOR_TEXT, 0);
   lv_obj_align(s_battery_percent_label, LV_ALIGN_CENTER, 0, -8);
 
@@ -237,33 +281,52 @@ void ui_page_status_create(lv_obj_t *tile)
 
   // Durum rozetleri (Wi-Fi / MQTT / SD)
   lv_obj_t *badges_row = lv_obj_create(content);
-  lv_obj_set_size(badges_row, LV_PCT(100), 78);
   lv_obj_set_style_bg_opa(badges_row, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(badges_row, 0, 0);
   lv_obj_set_style_pad_all(badges_row, 0, 0);
-  lv_obj_set_style_pad_column(badges_row, 6, 0);
   lv_obj_clear_flag(badges_row, LV_OBJ_FLAG_SCROLLABLE);
+#if UI_COMPACT
+  const lv_coord_t right_w = UI_CONTENT_WIDTH - left_w - 8;
+  lv_obj_set_size(badges_row, right_w, UI_CONTENT_HEIGHT - 24);
+  lv_obj_align(badges_row, LV_ALIGN_TOP_RIGHT, 0, 2);
+  lv_obj_set_style_pad_row(badges_row, 6, 0);
+  lv_obj_set_flex_flow(badges_row, LV_FLEX_FLOW_COLUMN);
+#else
+  lv_obj_set_size(badges_row, LV_PCT(100), 78);
+  lv_obj_set_style_pad_column(badges_row, 6, 0);
   lv_obj_set_flex_flow(badges_row, LV_FLEX_FLOW_ROW);
   lv_obj_align_to(badges_row, bat_box, LV_ALIGN_OUT_BOTTOM_MID, 0, 6);
+#endif
 
   lv_obj_t *wifi_card = create_badge(badges_row, "Wi-Fi", &s_wifi_dot, &s_wifi_title, &s_wifi_detail);
-  lv_obj_set_size(wifi_card, 104, 74);
   lv_obj_add_event_cb(wifi_card, open_wifi_detail_cb, LV_EVENT_CLICKED, NULL);
-
   lv_obj_t *mqtt_card = create_badge(badges_row, "MQTT", &s_mqtt_dot, &s_mqtt_title, &s_mqtt_detail);
-  lv_obj_set_size(mqtt_card, 104, 74);
   lv_obj_add_event_cb(mqtt_card, open_mqtt_detail_cb, LV_EVENT_CLICKED, NULL);
-
   lv_obj_t *sd_card = create_badge(badges_row, "SD", &s_sd_dot, &s_sd_title, &s_sd_detail);
-  lv_obj_set_size(sd_card, 104, 74);
   lv_obj_add_event_cb(sd_card, open_sd_detail_cb, LV_EVENT_CLICKED, NULL);
+#if UI_COMPACT
+  lv_obj_set_width(wifi_card, LV_PCT(100));
+  lv_obj_set_width(mqtt_card, LV_PCT(100));
+  lv_obj_set_width(sd_card, LV_PCT(100));
+  lv_obj_set_flex_grow(wifi_card, 1);
+  lv_obj_set_flex_grow(mqtt_card, 1);
+  lv_obj_set_flex_grow(sd_card, 1);
+#else
+  lv_obj_set_size(wifi_card, 104, 74);
+  lv_obj_set_size(mqtt_card, 104, 74);
+  lv_obj_set_size(sd_card, 104, 74);
+#endif
 
   // Kucuk, tiklanabilir sistem bilgisi satiri (calisma suresi/heap/PSRAM
   // ayrintilari kalabalik olmasin diye yalnizca bu ayrinti penceresinde).
   s_system_info_label = lv_label_create(content);
   lv_label_set_text(s_system_info_label, "Sistem >");
   ui_theme_style_subtitle(s_system_info_label);
+#if UI_COMPACT
+  lv_obj_align(s_system_info_label, LV_ALIGN_BOTTOM_RIGHT, -4, 0);
+#else
   lv_obj_align_to(s_system_info_label, badges_row, LV_ALIGN_OUT_BOTTOM_MID, 0, 4);
+#endif
   lv_obj_add_flag(s_system_info_label, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(s_system_info_label, open_system_detail_cb, LV_EVENT_CLICKED, NULL);
 }
@@ -305,7 +368,11 @@ void ui_page_status_update()
   lv_obj_set_style_bg_color(s_wifi_dot, g_systemStatus.wifiConnected ? UI_COLOR_GOOD : UI_COLOR_BAD, 0);
   if (g_systemStatus.wifiConnected) {
     char buf[48];
+#if UI_COMPACT
+    snprintf(buf, sizeof(buf), "%s  %d dBm", g_systemStatus.wifiSsid, g_systemStatus.wifiRssi);
+#else
     snprintf(buf, sizeof(buf), "%s\n%d dBm", g_systemStatus.wifiSsid, g_systemStatus.wifiRssi);
+#endif
     lv_label_set_text(s_wifi_detail, buf);
   } else {
     lv_label_set_text(s_wifi_detail, "Bagli degil");
@@ -313,10 +380,17 @@ void ui_page_status_update()
 
   // MQTT rozeti
   lv_obj_set_style_bg_color(s_mqtt_dot, g_systemStatus.mqttConnected ? UI_COLOR_GOOD : UI_COLOR_WARN, 0);
+#if UI_COMPACT
+  lv_label_set_text(s_mqtt_detail,
+                    g_systemStatus.mqttConnected
+                        ? (g_systemStatus.bleConnected ? "Bagli, telefon bagli" : "Bagli")
+                        : (g_systemStatus.bleConnected ? "Kapali, telefon bagli" : "Kapali"));
+#else
   lv_label_set_text(s_mqtt_detail,
                     g_systemStatus.mqttConnected
                         ? (g_systemStatus.bleConnected ? "MQTT bagli\nTelefon bagli" : "MQTT bagli")
                         : (g_systemStatus.bleConnected ? "MQTT kapali\nTelefon bagli" : "MQTT kapali"));
+#endif
 
   // SD rozeti
   lv_obj_set_style_bg_color(s_sd_dot, g_systemStatus.sdMounted ? UI_COLOR_GOOD : UI_COLOR_BAD, 0);
@@ -340,29 +414,36 @@ static lv_obj_t *create_sensor_card(lv_obj_t *parent, const char *name, const ch
 {
   lv_obj_t *card = ui_theme_create_card(parent);
   lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+#if UI_COMPACT
+  lv_obj_set_style_pad_row(card, 0, 0);
+#endif
 
   lv_obj_t *name_label = lv_label_create(card);
   lv_label_set_text(name_label, name);
   ui_theme_style_subtitle(name_label);
   lv_obj_set_style_text_color(name_label, UI_COLOR_TEXT, 0);
 
+  // Deger ve birim esnek bir satirda: deger genisledikce birim de saga kayar
+  // (eskiden birim "--" genisligine gore bir kez hizalanip degerin ustune biniyordu).
   lv_obj_t *value_row = lv_obj_create(card);
-  lv_obj_set_size(value_row, LV_PCT(100), 34);
+  lv_obj_set_size(value_row, LV_PCT(100), UI_COMPACT ? 32 : 34);
   lv_obj_set_style_bg_opa(value_row, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(value_row, 0, 0);
   lv_obj_set_style_pad_all(value_row, 0, 0);
+  lv_obj_set_style_pad_column(value_row, 4, 0);
   lv_obj_clear_flag(value_row, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_flex_flow(value_row, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(value_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_END);
 
   lv_obj_t *value_label = lv_label_create(value_row);
   lv_label_set_text(value_label, "--");
-  lv_obj_set_style_text_font(value_label, &lv_font_montserrat_28, 0);
+  lv_obj_set_style_text_font(value_label, UI_FONT_VALUE, 0);
   lv_obj_set_style_text_color(value_label, UI_COLOR_TEXT, 0);
-  lv_obj_align(value_label, LV_ALIGN_LEFT_MID, 0, 0);
 
   lv_obj_t *unit_label = lv_label_create(value_row);
   lv_label_set_text(unit_label, unit);
   ui_theme_style_subtitle(unit_label);
-  lv_obj_align_to(unit_label, value_label, LV_ALIGN_OUT_RIGHT_MID, 4, 4);
+  lv_obj_set_style_pad_bottom(unit_label, 3, 0);
 
   lv_obj_t *status_label = lv_label_create(card);
   lv_label_set_text(status_label, "");
@@ -387,23 +468,36 @@ void ui_page_data_create(lv_obj_t *tile)
   lv_obj_t *title = lv_label_create(content);
   lv_label_set_text(title, "CANLI VERILER");
   ui_theme_style_title(title);
-  lv_obj_set_style_text_font(title, &lv_font_montserrat_26, 0);
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
+  lv_obj_set_style_text_font(title, UI_FONT_PAGE_TITLE, 0);
 
   s_data_meta_label = lv_label_create(content);
   lv_label_set_text(s_data_meta_label, "Veri yok");
   ui_theme_style_subtitle(s_data_meta_label);
-  lv_obj_align_to(s_data_meta_label, title, LV_ALIGN_OUT_BOTTOM_MID, 0, 2);
 
   s_data_demo_label = lv_label_create(content);
   lv_label_set_text(s_data_demo_label, "DEMO");
   lv_obj_set_style_text_color(s_data_demo_label, UI_COLOR_WARN, 0);
-  lv_obj_set_style_text_font(s_data_demo_label, &lv_font_montserrat_18, 0);
-  lv_obj_align_to(s_data_demo_label, s_data_meta_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 2);
+  lv_obj_set_style_text_font(s_data_demo_label, UI_FONT_ACCENT, 0);
 
   lv_obj_t *grid = lv_obj_create(content);
+#if UI_COMPACT
+  // Baslik solda; MQTT durumu ve DEMO ayni satirda sagda.
+  lv_obj_align(title, LV_ALIGN_TOP_LEFT, 2, 0);
+  lv_obj_align(s_data_meta_label, LV_ALIGN_TOP_RIGHT, -2, 2);
+  lv_obj_set_style_bg_color(s_data_demo_label, UI_COLOR_WARN, 0);
+  lv_obj_set_style_bg_opa(s_data_demo_label, LV_OPA_20, 0);
+  lv_obj_set_style_radius(s_data_demo_label, 4, 0);
+  lv_obj_set_style_pad_hor(s_data_demo_label, 4, 0);
+  lv_obj_align_to(s_data_demo_label, s_data_meta_label, LV_ALIGN_OUT_LEFT_MID, -6, 0);
+  lv_obj_set_size(grid, LV_PCT(100), UI_CONTENT_HEIGHT - 28);
+  lv_obj_align(grid, LV_ALIGN_BOTTOM_MID, 0, 0);
+#else
+  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
+  lv_obj_align_to(s_data_meta_label, title, LV_ALIGN_OUT_BOTTOM_MID, 0, 2);
+  lv_obj_align_to(s_data_demo_label, s_data_meta_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 2);
   lv_obj_set_size(grid, LV_PCT(100), 190);
   lv_obj_align_to(grid, s_data_demo_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 6);
+#endif
   lv_obj_set_style_bg_opa(grid, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(grid, 0, 0);
   lv_obj_set_style_pad_all(grid, 0, 0);
@@ -457,6 +551,11 @@ static void update_sensor_card(SensorCardRefs *refs, bool valid, float value, ui
 void ui_page_data_update()
 {
   lv_label_set_text(s_data_meta_label, g_systemStatus.mqttConnected ? "MQTT bagli" : "MQTT kapali");
+#if UI_COMPACT
+  // Metin genisligi degisir ("bagli"/"kapali"): DEMO etiketi hemen solunda kalsin.
+  lv_obj_update_layout(s_data_meta_label);
+  lv_obj_align_to(s_data_demo_label, s_data_meta_label, LV_ALIGN_OUT_LEFT_MID, -6, 0);
+#endif
   if (g_sensorValues.demoMode) {
     lv_obj_clear_flag(s_data_demo_label, LV_OBJ_FLAG_HIDDEN);
   } else {
@@ -514,7 +613,7 @@ static void open_wifi_menu_cb(lv_event_t *e)
   lv_obj_set_style_text_color(l4, UI_COLOR_TEXT, 0);
 
   lv_obj_t *btn_row = lv_obj_create(content);
-  lv_obj_set_size(btn_row, LV_PCT(100), 44);
+  lv_obj_set_size(btn_row, LV_PCT(100), BTN_H(44));
   lv_obj_set_style_bg_opa(btn_row, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(btn_row, 0, 0);
   lv_obj_set_style_pad_all(btn_row, 0, 0);
@@ -524,22 +623,22 @@ static void open_wifi_menu_cb(lv_event_t *e)
 
   lv_obj_t *reconnect_btn = lv_btn_create(btn_row);
   lv_obj_set_flex_grow(reconnect_btn, 1);
-  lv_obj_set_height(reconnect_btn, 44);
+  lv_obj_set_height(reconnect_btn, BTN_H(44));
   lv_obj_set_style_bg_color(reconnect_btn, UI_COLOR_ACCENT_FILL, 0);
   lv_obj_add_event_cb(reconnect_btn, wifi_reconnect_btn_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *reconnect_label = lv_label_create(reconnect_btn);
   lv_label_set_text(reconnect_label, "YENIDEN BAGLAN");
-  lv_obj_set_style_text_font(reconnect_label, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_font(reconnect_label, UI_FONT_BUTTON, 0);
   lv_obj_center(reconnect_label);
 
   lv_obj_t *scan_btn = lv_btn_create(btn_row);
   lv_obj_set_flex_grow(scan_btn, 1);
-  lv_obj_set_height(scan_btn, 44);
+  lv_obj_set_height(scan_btn, BTN_H(44));
   lv_obj_set_style_bg_color(scan_btn, UI_COLOR_CARD_BORDER, 0);
   lv_obj_add_event_cb(scan_btn, wifi_scan_btn_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *scan_label = lv_label_create(scan_btn);
   lv_label_set_text(scan_label, "AGLARI TARA");
-  lv_obj_set_style_text_font(scan_label, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_font(scan_label, UI_FONT_BUTTON, 0);
   lv_obj_center(scan_label);
 }
 
@@ -590,7 +689,7 @@ static void open_mqtt_menu_cb(lv_event_t *e)
   lv_obj_set_style_text_color(l5, UI_COLOR_TEXT, 0);
 
   lv_obj_t *btn_row = lv_obj_create(content);
-  lv_obj_set_size(btn_row, LV_PCT(100), 40);
+  lv_obj_set_size(btn_row, LV_PCT(100), BTN_H(40));
   lv_obj_set_style_bg_opa(btn_row, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(btn_row, 0, 0);
   lv_obj_set_style_pad_all(btn_row, 0, 0);
@@ -600,32 +699,32 @@ static void open_mqtt_menu_cb(lv_event_t *e)
 
   lv_obj_t *connect_btn = lv_btn_create(btn_row);
   lv_obj_set_flex_grow(connect_btn, 1);
-  lv_obj_set_height(connect_btn, 40);
+  lv_obj_set_height(connect_btn, BTN_H(40));
   lv_obj_set_style_bg_color(connect_btn, UI_COLOR_ACCENT_FILL, 0);
   lv_obj_add_event_cb(connect_btn, mqtt_connect_btn_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *connect_label = lv_label_create(connect_btn);
   lv_label_set_text(connect_label, "BAGLAN");
-  lv_obj_set_style_text_font(connect_label, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_font(connect_label, UI_FONT_BUTTON, 0);
   lv_obj_center(connect_label);
 
   lv_obj_t *disconnect_btn = lv_btn_create(btn_row);
   lv_obj_set_flex_grow(disconnect_btn, 1);
-  lv_obj_set_height(disconnect_btn, 40);
+  lv_obj_set_height(disconnect_btn, BTN_H(40));
   lv_obj_set_style_bg_color(disconnect_btn, UI_COLOR_CARD_BORDER, 0);
   lv_obj_add_event_cb(disconnect_btn, mqtt_disconnect_btn_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *disconnect_label = lv_label_create(disconnect_btn);
   lv_label_set_text(disconnect_label, "KES");
-  lv_obj_set_style_text_font(disconnect_label, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_font(disconnect_label, UI_FONT_BUTTON, 0);
   lv_obj_center(disconnect_label);
 
   lv_obj_t *retry_btn = lv_btn_create(btn_row);
   lv_obj_set_flex_grow(retry_btn, 1);
-  lv_obj_set_height(retry_btn, 40);
+  lv_obj_set_height(retry_btn, BTN_H(40));
   lv_obj_set_style_bg_color(retry_btn, UI_COLOR_CARD_BORDER, 0);
   lv_obj_add_event_cb(retry_btn, mqtt_connect_btn_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *retry_label = lv_label_create(retry_btn);
-  lv_label_set_text(retry_label, "TEKRAR DENE");
-  lv_obj_set_style_text_font(retry_label, &lv_font_montserrat_16, 0);
+  lv_label_set_text(retry_label, UI_COMPACT ? "TEKRAR" : "TEKRAR DENE");
+  lv_obj_set_style_text_font(retry_label, UI_FONT_BUTTON, 0);
   lv_obj_center(retry_label);
 }
 
@@ -669,7 +768,7 @@ static void open_logging_menu_cb(lv_event_t *e)
   lv_obj_set_style_text_color(l5, UI_COLOR_TEXT, 0);
 
   lv_obj_t *btn_row = lv_obj_create(content);
-  lv_obj_set_size(btn_row, LV_PCT(100), 40);
+  lv_obj_set_size(btn_row, LV_PCT(100), BTN_H(40));
   lv_obj_set_style_bg_opa(btn_row, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(btn_row, 0, 0);
   lv_obj_set_style_pad_all(btn_row, 0, 0);
@@ -679,22 +778,22 @@ static void open_logging_menu_cb(lv_event_t *e)
 
   lv_obj_t *toggle_btn = lv_btn_create(btn_row);
   lv_obj_set_flex_grow(toggle_btn, 1);
-  lv_obj_set_height(toggle_btn, 40);
+  lv_obj_set_height(toggle_btn, BTN_H(40));
   lv_obj_set_style_bg_color(toggle_btn, UI_COLOR_ACCENT_FILL, 0);
   lv_obj_add_event_cb(toggle_btn, log_start_stop_btn_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *toggle_label = lv_label_create(toggle_btn);
   lv_label_set_text(toggle_label, g_loggingStatus.enabled ? "KAYDI DURDUR" : "KAYDI BASLAT");
-  lv_obj_set_style_text_font(toggle_label, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_font(toggle_label, UI_FONT_BUTTON, 0);
   lv_obj_center(toggle_label);
 
   lv_obj_t *test_btn = lv_btn_create(btn_row);
   lv_obj_set_flex_grow(test_btn, 1);
-  lv_obj_set_height(test_btn, 40);
+  lv_obj_set_height(test_btn, BTN_H(40));
   lv_obj_set_style_bg_color(test_btn, UI_COLOR_CARD_BORDER, 0);
   lv_obj_add_event_cb(test_btn, log_save_now_btn_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *test_label = lv_label_create(test_btn);
   lv_label_set_text(test_label, "TEST SATIRI YAZ");
-  lv_obj_set_style_text_font(test_label, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_font(test_label, UI_FONT_BUTTON, 0);
   lv_obj_center(test_label);
 }
 
@@ -722,7 +821,7 @@ static void open_sensors_menu_cb(lv_event_t *e)
   lv_obj_set_width(l, LV_PCT(100));
 
   lv_obj_t *demo_btn = lv_btn_create(content);
-  lv_obj_set_size(demo_btn, LV_PCT(100), 44);
+  lv_obj_set_size(demo_btn, LV_PCT(100), BTN_H(44));
   lv_obj_set_style_bg_color(demo_btn, UI_COLOR_ACCENT_FILL, 0);
   lv_obj_t *demo_label = lv_label_create(demo_btn);
   lv_label_set_text(demo_label, g_sensorValues.demoMode ? "DEMO: ACIK" : "DEMO: KAPALI");
@@ -769,7 +868,7 @@ static void open_clock_menu_cb(lv_event_t *e)
   lv_obj_set_style_text_color(l3, UI_COLOR_TEXT, 0);
 
   lv_obj_t *btn_row = lv_obj_create(content);
-  lv_obj_set_size(btn_row, LV_PCT(100), 44);
+  lv_obj_set_size(btn_row, LV_PCT(100), BTN_H(44));
   lv_obj_set_style_bg_opa(btn_row, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(btn_row, 0, 0);
   lv_obj_set_style_pad_all(btn_row, 0, 0);
@@ -779,22 +878,22 @@ static void open_clock_menu_cb(lv_event_t *e)
 
   lv_obj_t *ntp_btn = lv_btn_create(btn_row);
   lv_obj_set_flex_grow(ntp_btn, 1);
-  lv_obj_set_height(ntp_btn, 44);
+  lv_obj_set_height(ntp_btn, BTN_H(44));
   lv_obj_set_style_bg_color(ntp_btn, UI_COLOR_ACCENT_FILL, 0);
   lv_obj_add_event_cb(ntp_btn, ntp_sync_btn_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *ntp_label = lv_label_create(ntp_btn);
   lv_label_set_text(ntp_label, "NTP ILE ESITLE");
-  lv_obj_set_style_text_font(ntp_label, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_font(ntp_label, UI_FONT_BUTTON, 0);
   lv_obj_center(ntp_label);
 
   lv_obj_t *write_btn = lv_btn_create(btn_row);
   lv_obj_set_flex_grow(write_btn, 1);
-  lv_obj_set_height(write_btn, 44);
+  lv_obj_set_height(write_btn, BTN_H(44));
   lv_obj_set_style_bg_color(write_btn, UI_COLOR_CARD_BORDER, 0);
   lv_obj_add_event_cb(write_btn, write_rtc_btn_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *write_label = lv_label_create(write_btn);
   lv_label_set_text(write_label, "RTC'YE YAZ");
-  lv_obj_set_style_text_font(write_label, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_font(write_label, UI_FONT_BUTTON, 0);
   lv_obj_center(write_label);
 }
 
@@ -834,7 +933,7 @@ static void open_display_menu_cb(lv_event_t *e)
   lv_obj_set_style_text_color(l2, UI_COLOR_TEXT, 0);
 
   lv_obj_t *btn_row = lv_obj_create(content);
-  lv_obj_set_size(btn_row, LV_PCT(100), 40);
+  lv_obj_set_size(btn_row, LV_PCT(100), BTN_H(40));
   lv_obj_set_style_bg_opa(btn_row, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(btn_row, 0, 0);
   lv_obj_set_style_pad_all(btn_row, 0, 0);
@@ -851,12 +950,12 @@ static void open_display_menu_cb(lv_event_t *e)
   for (auto &opt : options) {
     lv_obj_t *b = lv_btn_create(btn_row);
     lv_obj_set_flex_grow(b, 1);
-    lv_obj_set_height(b, 40);
+    lv_obj_set_height(b, BTN_H(40));
     lv_obj_set_style_bg_color(b, system_service_get_sleep_timeout_ms() == opt.ms ? UI_COLOR_ACCENT_FILL : UI_COLOR_CARD_BORDER, 0);
     lv_obj_add_event_cb(b, sleep_timeout_btn_cb, LV_EVENT_CLICKED, (void *)(intptr_t)opt.ms);
     lv_obj_t *label = lv_label_create(b);
     lv_label_set_text(label, opt.label);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(label, UI_FONT_BUTTON, 0);
     lv_obj_center(label);
   }
 }
@@ -884,7 +983,7 @@ static void open_weather_menu_cb(lv_event_t *e)
     snprintf(buf, sizeof(buf), "-- C");
   }
   lv_label_set_text(temp, buf);
-  lv_obj_set_style_text_font(temp, &lv_font_montserrat_26, 0);
+  lv_obj_set_style_text_font(temp, UI_FONT_BIG, 0);
   lv_obj_set_style_text_color(temp, UI_COLOR_TEXT, 0);
 
   lv_obj_t *cond = lv_label_create(content);
@@ -917,7 +1016,7 @@ static void open_weather_menu_cb(lv_event_t *e)
   lv_obj_set_style_text_color(updated, UI_COLOR_TEXT, 0);
 
   lv_obj_t *refresh_btn = lv_btn_create(content);
-  lv_obj_set_size(refresh_btn, LV_PCT(100), 44);
+  lv_obj_set_size(refresh_btn, LV_PCT(100), BTN_H(44));
   lv_obj_set_style_bg_color(refresh_btn, UI_COLOR_ACCENT_FILL, 0);
   lv_obj_add_event_cb(refresh_btn, weather_refresh_btn_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *refresh_label = lv_label_create(refresh_btn);
@@ -1006,7 +1105,7 @@ static void open_lucky_menu_cb(lv_event_t *e)
   lv_label_set_text(s_lucky_hint_label, "Cihazi salla,\nsansli sayini sec!");
   lv_obj_set_style_text_align(s_lucky_hint_label, LV_TEXT_ALIGN_CENTER, 0);
   ui_theme_style_subtitle(s_lucky_hint_label);
-  lv_obj_set_style_text_font(s_lucky_hint_label, &lv_font_montserrat_24, 0);
+  lv_obj_set_style_text_font(s_lucky_hint_label, UI_FONT_HINT, 0);
   lv_obj_set_style_text_color(s_lucky_hint_label, UI_COLOR_TEXT, 0);
 
   s_lucky_number_label = lv_label_create(content);
@@ -1027,17 +1126,31 @@ static void open_lucky_menu_cb(lv_event_t *e)
   lv_obj_add_event_cb(s_lucky_number_label, lucky_screen_deleted_cb, LV_EVENT_DELETE, NULL);
 }
 
-static lv_obj_t *create_menu_button(lv_obj_t *parent, const char *text, lv_event_cb_t cb)
+struct MenuItem {
+  const char *symbol;      // kompakt ekranda metnin ustunde gosterilen ikon
+  const char *text;
+  const char *short_text;  // kompakt ekranda dar dugmeye sigan kisa ad
+  lv_event_cb_t cb;
+};
+
+static lv_obj_t *create_menu_button(lv_obj_t *parent, const MenuItem &item)
 {
   lv_obj_t *btn = lv_btn_create(parent);
   lv_obj_set_style_bg_color(btn, UI_COLOR_CARD, 0);
   lv_obj_set_style_border_color(btn, UI_COLOR_CARD_BORDER, 0);
   lv_obj_set_style_border_width(btn, 1, 0);
-  lv_obj_set_style_radius(btn, 12, 0);
-  lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, NULL);
+  lv_obj_set_style_radius(btn, UI_COMPACT ? 10 : 12, 0);
+  lv_obj_add_event_cb(btn, item.cb, LV_EVENT_CLICKED, NULL);
 
   lv_obj_t *label = lv_label_create(btn);
-  lv_label_set_text(label, text);
+#if UI_COMPACT
+  lv_obj_set_style_pad_all(btn, 2, 0);
+  lv_label_set_text_fmt(label, "%s\n%s", item.symbol, item.short_text);
+  lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_line_space(label, 6, 0);
+#else
+  lv_label_set_text(label, item.text);
+#endif
   lv_obj_set_style_text_color(label, UI_COLOR_TEXT, 0);
   lv_obj_center(label);
   return btn;
@@ -1056,11 +1169,15 @@ void ui_page_menu_create(lv_obj_t *tile)
   lv_obj_t *title = lv_label_create(content);
   lv_label_set_text(title, "ISLEMLER");
   ui_theme_style_title(title);
-  lv_obj_set_style_text_font(title, &lv_font_montserrat_26, 0);
+  lv_obj_set_style_text_font(title, UI_FONT_PAGE_TITLE, 0);
+#if UI_COMPACT
+  lv_obj_align(title, LV_ALIGN_TOP_LEFT, 2, 0);
+#else
   lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
+#endif
 
   lv_obj_t *grid = lv_obj_create(content);
-  lv_obj_set_size(grid, LV_PCT(100), UI_CONTENT_HEIGHT - 30);
+  lv_obj_set_size(grid, LV_PCT(100), UI_CONTENT_HEIGHT - (UI_COMPACT ? 28 : 30));
   lv_obj_align(grid, LV_ALIGN_BOTTOM_MID, 0, 0);
   lv_obj_set_style_bg_opa(grid, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(grid, 0, 0);
@@ -1068,27 +1185,32 @@ void ui_page_menu_create(lv_obj_t *tile)
   lv_obj_set_style_pad_gap(grid, 8, 0);
   lv_obj_clear_flag(grid, LV_OBJ_FLAG_SCROLLABLE);
 
+  static const MenuItem items[] = {
+      {LV_SYMBOL_WIFI, "Wi-Fi", "Wi-Fi", open_wifi_menu_cb},
+      {LV_SYMBOL_UPLOAD, "MQTT", "MQTT", open_mqtt_menu_cb},
+      {LV_SYMBOL_SAVE, "Kayit", "Kayit", open_logging_menu_cb},
+      {LV_SYMBOL_LIST, "Sensorler", "Sensor", open_sensors_menu_cb},
+      {LV_SYMBOL_BELL, "Saat", "Saat", open_clock_menu_cb},
+      {LV_SYMBOL_IMAGE, "Ekran", "Ekran", open_display_menu_cb},
+      {LV_SYMBOL_CHARGE, "Hava Durumu", "Hava", open_weather_menu_cb},
+      {LV_SYMBOL_SHUFFLE, "Salla Kazan", "Salla", open_lucky_menu_cb},
+  };
+#if UI_COMPACT
+  // Yatay ekran: 4 sutun x 2 satir, ikonlu kare dugmeler.
+  static lv_coord_t col_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+  static lv_coord_t row_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+  const int cols = 4;
+#else
   static lv_coord_t col_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
   static lv_coord_t row_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+  const int cols = 2;
+#endif
   lv_obj_set_grid_dsc_array(grid, col_dsc, row_dsc);
 
-  lv_obj_t *b;
-  b = create_menu_button(grid, "Wi-Fi", open_wifi_menu_cb);
-  lv_obj_set_grid_cell(b, LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_STRETCH, 0, 1);
-  b = create_menu_button(grid, "MQTT", open_mqtt_menu_cb);
-  lv_obj_set_grid_cell(b, LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 0, 1);
-  b = create_menu_button(grid, "Kayit", open_logging_menu_cb);
-  lv_obj_set_grid_cell(b, LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_STRETCH, 1, 1);
-  b = create_menu_button(grid, "Sensorler", open_sensors_menu_cb);
-  lv_obj_set_grid_cell(b, LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 1, 1);
-  b = create_menu_button(grid, "Saat", open_clock_menu_cb);
-  lv_obj_set_grid_cell(b, LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_STRETCH, 2, 1);
-  b = create_menu_button(grid, "Ekran", open_display_menu_cb);
-  lv_obj_set_grid_cell(b, LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 2, 1);
-  b = create_menu_button(grid, "Hava Durumu", open_weather_menu_cb);
-  lv_obj_set_grid_cell(b, LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_STRETCH, 3, 1);
-  b = create_menu_button(grid, "Salla Kazan", open_lucky_menu_cb);
-  lv_obj_set_grid_cell(b, LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 3, 1);
+  for (int i = 0; i < (int)(sizeof(items) / sizeof(items[0])); i++) {
+    lv_obj_t *b = create_menu_button(grid, items[i]);
+    lv_obj_set_grid_cell(b, LV_GRID_ALIGN_STRETCH, i % cols, 1, LV_GRID_ALIGN_STRETCH, i / cols, 1);
+  }
 }
 
 void ui_page_menu_update()
@@ -1194,7 +1316,7 @@ static void log_view_render()
     lv_obj_set_style_radius(row, 10, 0);
     lv_obj_set_style_pad_all(row, 6, 0);
     lv_label_set_recolor(row, true);
-    snprintf(buf, sizeof(buf), "#22d3ee %s#\n%s   Nem %s\n%s  %s  %s",
+    snprintf(buf, sizeof(buf), "#" UI_COLOR_ACCENT_HEX " %s#\n%s   Nem %s\n%s  %s  %s",
              r.timestamp + 11, temp, hum, volt, cur, pwr);
     lv_label_set_text(row, buf);
   }
@@ -1244,12 +1366,26 @@ void ui_page_log_create(lv_obj_t *tile)
   lv_obj_t *title = lv_label_create(content);
   lv_label_set_text(title, "VERI KAYDI");
   ui_theme_style_title(title);
-  lv_obj_set_style_text_font(title, &lv_font_montserrat_26, 0);
+  lv_obj_set_style_text_font(title, UI_FONT_PAGE_TITLE, 0);
+
+#if UI_COMPACT
+  // Yatay ekran: bilgi karti ile olay listesi yan yana, dugmeler en altta.
+  const lv_coord_t mid_top = 26;
+  const lv_coord_t mid_h = UI_CONTENT_HEIGHT - mid_top - UI_BUTTON_HEIGHT - 6;
+  const lv_coord_t half_w = (UI_CONTENT_WIDTH - 6) / 2;
+  lv_obj_align(title, LV_ALIGN_TOP_LEFT, 2, 0);
+#else
   lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
+#endif
 
   lv_obj_t *info_card = ui_theme_create_card(content);
+#if UI_COMPACT
+  lv_obj_set_size(info_card, half_w, mid_h);
+  lv_obj_align(info_card, LV_ALIGN_TOP_LEFT, 0, mid_top);
+#else
   lv_obj_set_size(info_card, LV_PCT(100), 88);
   lv_obj_align_to(info_card, title, LV_ALIGN_OUT_BOTTOM_MID, 0, 4);
+#endif
   lv_obj_set_flex_flow(info_card, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(info_card, 1, 0);
 
@@ -1273,9 +1409,24 @@ void ui_page_log_create(lv_obj_t *tile)
   ui_theme_style_subtitle(s_log_last_write_label);
   lv_obj_set_style_text_color(s_log_last_write_label, UI_COLOR_TEXT, 0);
 
+#if UI_COMPACT
+  // Yarim genislikteki kartta uzun satirlar (dosya adi) tek satirda kisalsin.
+  lv_obj_t *info_labels[] = {s_log_sd_label, s_log_active_label, s_log_file_label,
+                             s_log_rows_label, s_log_last_write_label};
+  for (lv_obj_t *l : info_labels) {
+    lv_obj_set_width(l, LV_PCT(100));
+    lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
+  }
+#endif
+
   s_log_list = lv_obj_create(content);
+#if UI_COMPACT
+  lv_obj_set_size(s_log_list, half_w, mid_h);
+  lv_obj_align(s_log_list, LV_ALIGN_TOP_RIGHT, 0, mid_top);
+#else
   lv_obj_set_size(s_log_list, LV_PCT(100), 70);
   lv_obj_align_to(s_log_list, info_card, LV_ALIGN_OUT_BOTTOM_MID, 0, 4);
+#endif
   lv_obj_set_style_bg_color(s_log_list, UI_COLOR_CARD, 0);
   lv_obj_set_style_border_color(s_log_list, UI_COLOR_CARD_BORDER, 0);
   lv_obj_set_style_border_width(s_log_list, 1, 0);
@@ -1284,28 +1435,35 @@ void ui_page_log_create(lv_obj_t *tile)
   lv_obj_set_style_pad_all(s_log_list, 6, 0);
   lv_obj_set_style_pad_row(s_log_list, 2, 0);
 
+  lv_obj_t *btn_row = lv_obj_create(content);
+
+#if UI_COMPACT
+  lv_obj_t *view_btn = lv_btn_create(btn_row);
+  lv_obj_set_flex_grow(view_btn, 1);
+  lv_obj_set_height(view_btn, UI_BUTTON_HEIGHT);
+#else
   lv_obj_t *view_btn = lv_btn_create(content);
-  lv_obj_set_size(view_btn, LV_PCT(100), 40);
+  lv_obj_set_size(view_btn, LV_PCT(100), BTN_H(40));
   lv_obj_align_to(view_btn, s_log_list, LV_ALIGN_OUT_BOTTOM_MID, 0, 4);
+#endif
   lv_obj_set_style_bg_color(view_btn, UI_COLOR_ACCENT_FILL, 0);
   lv_obj_add_event_cb(view_btn, open_log_view_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *view_label = lv_label_create(view_btn);
-  lv_label_set_text(view_label, LV_SYMBOL_LIST " KAYDI IZLE");
+  lv_label_set_text(view_label, UI_COMPACT ? LV_SYMBOL_LIST " IZLE" : LV_SYMBOL_LIST " KAYDI IZLE");
   lv_obj_center(view_label);
 
-  lv_obj_t *btn_row = lv_obj_create(content);
-  lv_obj_set_size(btn_row, LV_PCT(100), 44);
+  lv_obj_set_size(btn_row, LV_PCT(100), BTN_H(44));
   lv_obj_align(btn_row, LV_ALIGN_BOTTOM_MID, 0, 0);
   lv_obj_set_style_bg_opa(btn_row, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(btn_row, 0, 0);
   lv_obj_set_style_pad_all(btn_row, 0, 0);
-  lv_obj_set_style_pad_column(btn_row, 8, 0);
+  lv_obj_set_style_pad_column(btn_row, UI_COMPACT ? 6 : 8, 0);
   lv_obj_clear_flag(btn_row, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_flex_flow(btn_row, LV_FLEX_FLOW_ROW);
 
   s_log_start_stop_btn = lv_btn_create(btn_row);
   lv_obj_set_flex_grow(s_log_start_stop_btn, 1);
-  lv_obj_set_height(s_log_start_stop_btn, 44);
+  lv_obj_set_height(s_log_start_stop_btn, BTN_H(44));
   lv_obj_set_style_bg_color(s_log_start_stop_btn, UI_COLOR_ACCENT_FILL, 0);
   lv_obj_add_event_cb(s_log_start_stop_btn, log_start_stop_btn_cb, LV_EVENT_CLICKED, NULL);
   s_log_start_stop_label = lv_label_create(s_log_start_stop_btn);
@@ -1314,11 +1472,11 @@ void ui_page_log_create(lv_obj_t *tile)
 
   lv_obj_t *save_now_btn = lv_btn_create(btn_row);
   lv_obj_set_flex_grow(save_now_btn, 1);
-  lv_obj_set_height(save_now_btn, 44);
+  lv_obj_set_height(save_now_btn, BTN_H(44));
   lv_obj_set_style_bg_color(save_now_btn, UI_COLOR_CARD_BORDER, 0);
   lv_obj_add_event_cb(save_now_btn, log_save_now_btn_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *save_now_label = lv_label_create(save_now_btn);
-  lv_label_set_text(save_now_label, "SIMDI KAYDET");
+  lv_label_set_text(save_now_label, UI_COMPACT ? "KAYDET" : "SIMDI KAYDET");
   lv_obj_center(save_now_label);
 }
 
@@ -1360,6 +1518,10 @@ void ui_page_log_update()
       lv_label_set_text(row, line);
       ui_theme_style_subtitle(row);
       lv_obj_set_style_text_color(row, UI_COLOR_TEXT, 0);
+#if UI_COMPACT
+      lv_obj_set_width(row, LV_PCT(100));
+      lv_label_set_long_mode(row, LV_LABEL_LONG_DOT);
+#endif
     }
     if (g_loggingStatus.eventCount == 0) {
       lv_obj_t *row = lv_label_create(s_log_list);

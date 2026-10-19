@@ -15,3 +15,6 @@ void ui_modal_close();
 // Su anda bir modalin acik olup olmadigini bildirir (periyodik guncelleme
 // fonksiyonlarinin, gorunmeyen bir modalin icerigini bosuna guncellememesi icin).
 bool ui_modal_is_open();
+
+// Acik modalin kok nesnesi (yoksa NULL). Gelistirici araci (ui_debug) icin.
+lv_obj_t *ui_modal_root();

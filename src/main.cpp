@@ -3,16 +3,7 @@
 
 #include "app_config.h"
 
-#include "board/waveshare/I2C_Driver.h"
-#include "board/waveshare/TCA9554PWR.h"
-#include "board/waveshare/Display_SPD2010.h"
-#include "board/waveshare/Touch_SPD2010.h"
-#include "board/waveshare/LVGL_Driver.h"
-#include "board/waveshare/BAT_Driver.h"
-#include "board/waveshare/RTC_PCF85063.h"
-#include "board/waveshare/Gyro_QMI8658.h"
-#include "board/waveshare/PWR_Key.h"
-#include "board/waveshare/SD_Card.h"
+#include "board.h"
 
 #include "ui/ui_app.h"
 #include "services/demo_service.h"
@@ -29,24 +20,11 @@
 #include "services/ble_service.h"
 
 // ---------------------------------------------------------------------------
-// Waveshare'in resmi ornegindeki donanim baslatma sirasi degistirilmeden
-// kullanilir (Driver_Init + SD_Init + LCD_Init + Lvgl_Init), ardindan dort
-// sayfali uygulama arayuzu (ui_app) ve servisler (pil/RTC/SD/Wi-Fi/sistem)
-// kurulur.
+// Donanim board.h uzerinden baslatilir (board_init + SD + board_display_init;
+// kartin kendi baslatma sirasi src/board/<kart>/board_impl.cpp icindedir),
+// ardindan dort sayfali uygulama arayuzu (ui_app) ve servisler
+// (pil/RTC/SD/Wi-Fi/sistem) kurulur.
 // ---------------------------------------------------------------------------
-
-static void Driver_Init()
-{
-  Flash_test();
-  PWR_Init();
-  BAT_Init();
-  I2C_Init();
-  TCA9554PWR_Init(0x00);
-  Backlight_Init();
-  Set_Backlight(50); // 0~100
-  PCF85063_Init();
-  QMI8658_Init();
-}
 
 static void Driver_Loop(void *parameter)
 {
@@ -56,12 +34,9 @@ static void Driver_Loop(void *parameter)
   uint32_t last_system_stats_ms = 0;
 
   while (1) {
-    PWR_Loop();
-    QMI8658_Loop();
+    board_poll();
     motion_service_loop();
     ble_service_loop();
-    PCF85063_Loop();
-    BAT_Get_Volts();
     demo_service_loop();
     wifi_service_loop();
     rtc_service_process_requests();
@@ -100,17 +75,15 @@ void setup()
   delay(200);
   Serial.println("[BOOT] Application starting");
 
-  Driver_Init();
-  Serial.println("[BOOT] Driver_Init tamamlandi");
+  Serial.printf("[BOOT] Kart: %s\r\n", board_name());
+  board_init();
+  Serial.println("[BOOT] board_init tamamlandi");
 
   storage_service_init();
   storage_service_run_boot_test();
 
-  LCD_Init();
-  Serial.println("[LCD] Display initialized");
-
-  Lvgl_Init();
-  Serial.println("[UI] LVGL baslatildi");
+  board_display_init();
+  Serial.println("[UI] Ekran ve LVGL baslatildi");
 
   ui_app_init();
   Serial.println("[UI] Dort sayfali arayuz olusturuldu");
@@ -139,6 +112,6 @@ void setup()
 
 void loop()
 {
-  Lvgl_Loop();
+  board_ui_loop();
   vTaskDelay(pdMS_TO_TICKS(5));
 }

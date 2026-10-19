@@ -9,3 +9,6 @@ void ui_app_init();
 // Son dokunmadan bu yana gecen sure (ms). Asama 3'teki ekran uyku
 // zamanlayicisi bunu kullanacak. LVGL'in kendi etkinlik izleyicisini sarar.
 uint32_t ui_app_inactivity_ms();
+
+// Verilen sayfaya (0..3) gecer ve gezinme cubugunu gunceller.
+void ui_app_show_tile(int index);
